@@ -5,7 +5,11 @@ using UnityEngine;
 public class GameManager : MonoBehaviour
 {
     public enum GameMode { Level, Custom }
-    public GameMode currentMode = GameMode.Level; // default to Level mode
+    public GameMode currentMode;
+
+
+    public TMP_Dropdown modeDropdown;
+    public GameObject startCustomButton;
 
     [SerializeField] private Vector3 _startPos;
     [SerializeField] private float _offsetX, _offsetY;
@@ -22,6 +26,29 @@ public class GameManager : MonoBehaviour
     private void Start()
     {
         hasGameFinished = false;
+        int storedMode = PlayerPrefs.GetInt("GameMode", 0);
+        currentMode = (GameMode)storedMode;
+
+        if (modeDropdown != null)
+            modeDropdown.value = storedMode;
+
+        if (startCustomButton != null)
+            startCustomButton.SetActive(currentMode == GameMode.Custom);
+
+        
+        // Defensive null checks
+        if (modeDropdown == null) Debug.LogWarning("Dropdown not assigned!");
+        if (startCustomButton == null) Debug.LogWarning("Start Button not assigned!");
+
+        // Retrieve game mode from PlayerPrefs (optional persistence)
+        int savedMode = PlayerPrefs.GetInt("GameMode", 0);
+        currentMode = (GameMode)savedMode;
+        if (modeDropdown != null)
+            modeDropdown.value = savedMode;
+
+        if (startCustomButton != null)
+            startCustomButton.SetActive(currentMode == GameMode.Custom);
+
         cells = new Cell[GRID_SIZE, GRID_SIZE];
         selectedCell = null;
 
@@ -34,6 +61,18 @@ public class GameManager : MonoBehaviour
             SpawnCells(); // level mode
         }
     }
+
+    public void OnModeChanged()
+    {
+        int modeValue = modeDropdown.value;
+        PlayerPrefs.SetInt("GameMode", modeValue); // Store mode (0: Level, 1: Custom)
+        PlayerPrefs.Save();
+        UnityEngine.SceneManagement.SceneManager.LoadScene(0); // reload scene
+        currentMode = modeDropdown.value == 0 ? GameMode.Level : GameMode.Custom;
+        PlayerPrefs.SetInt("GameMode", modeDropdown.value);
+        UnityEngine.SceneManagement.SceneManager.LoadScene(0); // reload scene
+    }
+
     private void SpawnEmptyBoard()
     {
         _levelText.text = "CUSTOM MODE";
@@ -57,8 +96,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-
-
     private void SpawnCells()
     {
         int[,] puzzleGrid = new int[GRID_SIZE, GRID_SIZE];
@@ -75,7 +112,6 @@ public class GameManager : MonoBehaviour
         }
 
         _levelText.text = "LEVEL " + level.ToString();
-
 
         for (int i = 0; i < GRID_SIZE; i++)
         {
@@ -94,7 +130,7 @@ public class GameManager : MonoBehaviour
             }
         }
     }
-    
+
     public void StartCustomPuzzle()
     {
         for (int i = 0; i < GRID_SIZE; i++)
@@ -108,9 +144,8 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // Start validation, etc.
+        CheckWin();
     }
-
 
     private void CreateAndStoreLevel(int[,] grid, int level)
     {
@@ -161,11 +196,8 @@ public class GameManager : MonoBehaviour
         RaycastHit2D hit = Physics2D.Raycast(mousePos2D, Vector2.zero);
         Cell tempCell;
 
-        if (hit
-            && hit.collider.gameObject.TryGetComponent(out tempCell)
-            && tempCell != selectedCell
-            && !tempCell.IsLocked
-            )
+        if (hit && hit.collider.gameObject.TryGetComponent(out tempCell) && tempCell != selectedCell)
+
         {
             ResetGrid();
             selectedCell = tempCell;
@@ -217,6 +249,8 @@ public class GameManager : MonoBehaviour
 
     private void HighLight()
     {
+        if (selectedCell == null) return;
+
         for (int i = 0; i < GRID_SIZE; i++)
         {
             for (int j = 0; j < GRID_SIZE; j++)
