@@ -1,12 +1,12 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class GameManager : MonoBehaviour
 {
     public enum GameMode { Level, Custom }
     public GameMode currentMode;
-
 
     public TMP_Dropdown modeDropdown;
     public GameObject startCustomButton;
@@ -26,61 +26,51 @@ public class GameManager : MonoBehaviour
     private void Start()
     {
         hasGameFinished = false;
-        int storedMode = PlayerPrefs.GetInt("GameMode", 0);
-        currentMode = (GameMode)storedMode;
 
+        // Read mode from PlayerPrefs
+        currentMode = (GameMode)PlayerPrefs.GetInt("GameMode", 0);
+
+        // Set dropdown and button visibility accordingly
         if (modeDropdown != null)
-            modeDropdown.value = storedMode;
+            modeDropdown.value = (int)currentMode;
 
         if (startCustomButton != null)
             startCustomButton.SetActive(currentMode == GameMode.Custom);
 
-        
-        // Defensive null checks
-        if (modeDropdown == null) Debug.LogWarning("Dropdown not assigned!");
-        if (startCustomButton == null) Debug.LogWarning("Start Button not assigned!");
-
-        // Retrieve game mode from PlayerPrefs (optional persistence)
-        int savedMode = PlayerPrefs.GetInt("GameMode", 0);
-        currentMode = (GameMode)savedMode;
-        if (modeDropdown != null)
-            modeDropdown.value = savedMode;
-
-        if (startCustomButton != null)
-            startCustomButton.SetActive(currentMode == GameMode.Custom);
-
+        // Initialize board
         cells = new Cell[GRID_SIZE, GRID_SIZE];
         selectedCell = null;
 
         if (currentMode == GameMode.Custom)
         {
-            SpawnEmptyBoard(); // custom mode
+            SpawnEmptyBoard();
         }
         else
         {
-            SpawnCells(); // level mode
+            SpawnCells();
         }
     }
 
     public void OnModeChanged()
     {
         int modeValue = modeDropdown.value;
-        PlayerPrefs.SetInt("GameMode", modeValue); // Store mode (0: Level, 1: Custom)
+        PlayerPrefs.SetInt("GameMode", modeValue);
         PlayerPrefs.Save();
-        UnityEngine.SceneManagement.SceneManager.LoadScene(0); // reload scene
-        currentMode = modeDropdown.value == 0 ? GameMode.Level : GameMode.Custom;
-        PlayerPrefs.SetInt("GameMode", modeDropdown.value);
-        UnityEngine.SceneManagement.SceneManager.LoadScene(0); // reload scene
+
+        // Reload scene once, after saving
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     private void SpawnEmptyBoard()
     {
         _levelText.text = "CUSTOM MODE";
+
         for (int i = 0; i < GRID_SIZE; i++)
         {
             Vector3 spawnPos = _startPos + i % 3 * _offsetX * Vector3.right + i / 3 * _offsetY * Vector3.up;
             SubGrid subGrid = Instantiate(_subGridPrefab, spawnPos, Quaternion.identity);
             List<Cell> subgridCells = subGrid.cells;
+
             int startRow = (i / 3) * 3;
             int startCol = (i % 3) * 3;
 
@@ -88,9 +78,10 @@ public class GameManager : MonoBehaviour
             {
                 int row = startRow + j / 3;
                 int col = startCol + j % 3;
+
                 subgridCells[j].Row = row;
                 subgridCells[j].Col = col;
-                subgridCells[j].Init(0); // Start all empty
+                subgridCells[j].Init(0); // Empty
                 cells[row, col] = subgridCells[j];
             }
         }
@@ -111,22 +102,28 @@ public class GameManager : MonoBehaviour
             GetCurrentLevel(puzzleGrid);
         }
 
-        _levelText.text = "LEVEL " + level.ToString();
+        _levelText.text = "LEVEL " + level;
 
         for (int i = 0; i < GRID_SIZE; i++)
         {
             Vector3 spawnPos = _startPos + i % 3 * _offsetX * Vector3.right + i / 3 * _offsetY * Vector3.up;
             SubGrid subGrid = Instantiate(_subGridPrefab, spawnPos, Quaternion.identity);
             List<Cell> subgridCells = subGrid.cells;
+
             int startRow = (i / 3) * 3;
             int startCol = (i % 3) * 3;
+
             for (int j = 0; j < GRID_SIZE; j++)
             {
-                subgridCells[j].Row = startRow + j / 3;
-                subgridCells[j].Col = startCol + j % 3;
-                int cellValue = puzzleGrid[subgridCells[j].Row, subgridCells[j].Col];
+                int row = startRow + j / 3;
+                int col = startCol + j % 3;
+
+                subgridCells[j].Row = row;
+                subgridCells[j].Col = col;
+
+                int cellValue = puzzleGrid[row, col];
                 subgridCells[j].Init(cellValue);
-                cells[subgridCells[j].Row, subgridCells[j].Col] = subgridCells[j];
+                cells[row, col] = subgridCells[j];
             }
         }
     }
@@ -144,18 +141,19 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        CheckWin();
+        CheckWin(); // Optional, or handle other logic
     }
 
     private void CreateAndStoreLevel(int[,] grid, int level)
     {
         int[,] tempGrid = Generator.GeneratePuzzle((Generator.DifficultyLevel)(level / 100));
         string arrayString = "";
+
         for (int i = 0; i < GRID_SIZE; i++)
         {
             for (int j = 0; j < GRID_SIZE; j++)
             {
-                arrayString += tempGrid[i, j].ToString() + ",";
+                arrayString += tempGrid[i, j] + ",";
                 grid[i, j] = tempGrid[i, j];
             }
         }
@@ -167,15 +165,14 @@ public class GameManager : MonoBehaviour
 
     private void GetCurrentLevel(int[,] grid)
     {
-        string arrayString = PlayerPrefs.GetString("Grid");
-        string[] arrayValue = arrayString.Split(',');
+        string[] array = PlayerPrefs.GetString("Grid").Split(',');
         int index = 0;
+
         for (int i = 0; i < GRID_SIZE; i++)
         {
             for (int j = 0; j < GRID_SIZE; j++)
             {
-                grid[i, j] = int.Parse(arrayValue[index]);
-                index++;
+                grid[i, j] = int.Parse(array[index++]);
             }
         }
     }
@@ -194,24 +191,14 @@ public class GameManager : MonoBehaviour
         Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         Vector2 mousePos2D = new Vector2(mousePos.x, mousePos.y);
         RaycastHit2D hit = Physics2D.Raycast(mousePos2D, Vector2.zero);
-        Cell tempCell;
 
-        if (hit && hit.collider.gameObject.TryGetComponent(out tempCell) && tempCell != selectedCell)
-
+        if (hit && hit.collider.TryGetComponent(out Cell tempCell))
         {
-            ResetGrid();
-            selectedCell = tempCell;
-            HighLight();
-        }
-    }
-
-    private void ResetGrid()
-    {
-        for (int i = 0; i < GRID_SIZE; i++)
-        {
-            for (int j = 0; j < GRID_SIZE; j++)
+            if (tempCell != selectedCell && !tempCell.IsLocked)
             {
-                cells[i, j].Reset();
+                ResetGrid();
+                selectedCell = tempCell;
+                HighLight();
             }
         }
     }
@@ -219,6 +206,7 @@ public class GameManager : MonoBehaviour
     public void UpdateCellValue(int value)
     {
         if (hasGameFinished || selectedCell == null) return;
+
         selectedCell.UpdateValue(value);
         HighLight();
         CheckWin();
@@ -244,7 +232,8 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        Invoke("GoToNextLevel", 2f);
+        if (currentMode == GameMode.Level)
+            Invoke(nameof(GoToNextLevel), 2f);
     }
 
     private void HighLight()
@@ -255,33 +244,34 @@ public class GameManager : MonoBehaviour
         {
             for (int j = 0; j < GRID_SIZE; j++)
             {
-                cells[i, j].IsIncorrect = !IsValid(cells[i, j], cells);
+                cells[i, j].IsIncorrect = !IsValid(cells[i, j]);
             }
         }
 
-        int currentRow = selectedCell.Row;
-        int currentCol = selectedCell.Col;
-        int subGridRow = currentRow - currentRow % SUBGRID_SIZE;
-        int subGridCol = currentCol - currentCol % SUBGRID_SIZE;
+        int row = selectedCell.Row;
+        int col = selectedCell.Col;
+        int subRow = row - row % SUBGRID_SIZE;
+        int subCol = col - col % SUBGRID_SIZE;
 
         for (int i = 0; i < GRID_SIZE; i++)
         {
-            cells[i, currentCol].HighLight();
-            cells[currentRow, i].HighLight();
-            cells[subGridRow + i % 3, subGridCol + i / 3].HighLight();
+            cells[i, col].HighLight();
+            cells[row, i].HighLight();
+            cells[subRow + i % 3, subCol + i / 3].HighLight();
         }
 
-        cells[currentRow, currentCol].Select();
+        selectedCell.Select();
     }
 
-    private bool IsValid(Cell cell, Cell[,] cells)
+    private bool IsValid(Cell cell)
     {
         int row = cell.Row;
         int col = cell.Col;
         int value = cell.Value;
-        cell.Value = 0;
 
         if (value == 0) return true;
+
+        cell.Value = 0;
 
         for (int i = 0; i < GRID_SIZE; i++)
         {
@@ -292,12 +282,12 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        int subGridRow = row - row % SUBGRID_SIZE;
-        int subGridCol = col - col % SUBGRID_SIZE;
+        int subRow = row - row % SUBGRID_SIZE;
+        int subCol = col - col % SUBGRID_SIZE;
 
-        for (int r = subGridRow; r < subGridRow + SUBGRID_SIZE; r++)
+        for (int r = subRow; r < subRow + SUBGRID_SIZE; r++)
         {
-            for (int c = subGridCol; c < subGridCol + SUBGRID_SIZE; c++)
+            for (int c = subCol; c < subCol + SUBGRID_SIZE; c++)
             {
                 if (cells[r, c].Value == value)
                 {
@@ -311,8 +301,15 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
+    private void ResetGrid()
+    {
+        for (int i = 0; i < GRID_SIZE; i++)
+            for (int j = 0; j < GRID_SIZE; j++)
+                cells[i, j].Reset();
+    }
+
     public void RestartGame()
     {
-        UnityEngine.SceneManagement.SceneManager.LoadScene(0);
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 }
